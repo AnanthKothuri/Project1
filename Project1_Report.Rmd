@@ -1,10 +1,12 @@
----
+        ---
 title: "SDS 322E: Project 1 Report"
 output: html_document
 ---
 
 ## Names and EIDs of Group Members
-
+Siddhi Bansasl sb63855
+Ananth Kothuri ask3343
+Maehek Bhatt mb66256
 
 
 ## Load the Data
@@ -46,11 +48,22 @@ How many active (3x3x3) speedcubers are there registered with the WCA? For this 
 
 
 ```{r}
-## Add your code here
+# look at the results table, filter by 333 event ID, join with competitions (using competitionId in results and id in competitions), filter by year, group by personId, count the number of competitions, filter by >= 2
+# then count the number of unique personIds
+num_active_speedcubers <- results |>
+  filter(eventId == "333") |>
+  inner_join(competitions, by = c("competitionId" = "id")) |>
+  filter(year >= 2022 & year <= 2024) |>
+  group_by(personId) |>
+  summarise(n_competitions = n()) |>
+  filter(n_competitions >= 2) |>
+  summarise(n_active_speedcubers = n_distinct(personId))
+
+print(num_active_speedcubers)
 
 ```
 
-**Write your answer here.**
+**There are 50,439 active speedcubers registered with the WCA.**
 
 ### World Records
 
@@ -59,33 +72,58 @@ This question has two parts:
 1. Who holds the current world record single? 
 
 ```{r}
-## Add your code here
+## Filter rankssingle by worldRank == 1
+curr_world_record <- rankssingle |>
+  filter(worldRank == 1) |>
+  inner_join(persons, by = c("personId" = "id")) |>
+  select(name, personId)
+print(curr_world_record)
 
 ```
 
-**Write your answer here.**
-
+**Max Park holds the current world record single.**
 
 On what date was this record set?
 
 
 ```{r}
-## Add your code here
+# passed their id to find the date of the record
+world_record_date <- results |>
+    filter(personId == "2012PARK03", pos == 1, eventId == "333") |>
+    arrange(best) |>
+    slice(1) |>
+    inner_join(competitions, by = c("competitionId" = "id")) |>
+    select(year, month, day)
 
+print(world_record_date)
 ```
 
-**Write your answer here.**
+**The world record was set on June 11, 2023.**
 
 
 
 2. Who *previously* held the world record single? On what date was this previous record set?
 
 ```{r}
-## Add your code here
+# found the previous world record holder
+curr_world_record <- rankssingle |>
+  filter(worldRank == 2) |>
+  inner_join(persons, by = c("personId" = "id")) |>
+  select(name, personId)
+print(curr_world_record)
 
+# passing their id to find the date of world record
+world_record_date <- results |>
+    filter(personId == "2017GARR05", pos == 1, eventId == "333") |>
+    arrange(best) |>
+    slice(1) |>
+    inner_join(competitions, by = c("competitionId" = "id")) |>
+    select(year, month, day)
+
+print(world_record_date)
 ```
 
-**Write your answer here.**
+**The previous world record holder was Luke Garret who set the record on February 25, 2023.**
 
 
 ### Regional Rankings
@@ -95,21 +133,36 @@ This question has two parts:
 1. Amongst all speedcubers, who is the top ranked male speedcuber (for best single solve) in Australia?
 
 ```{r}
-## Add your code here
+# filtered persons by gender and country
+males <- persons |>
+    filter(countryId == "Australia", gender == "m") |>
+    inner_join(rankssingle, by = c("id" = "personId")) |>
+    filter(countryRank == 1) |>
+    select(id, name)
 
+print(males)
 ```
 
-**Write your answer here.**
+**The top ranked male speedcuber in Australia is Jode Brewster.**
 
 
 2. Amongst all speedcubers, who is the top ranked female speedcuber (for best single solve time) in Europe?
 
 ```{r}
-## Add your code here
+# joined countries with persons to filter by continent and gender
+females <- persons |>
+    inner_join(countries, by = c("countryId" = "id")) |>
+    filter(gender == "f", continentId == "_Europe") |>
+    inner_join(rankssingle, by = c("id" = "personId")) |>
+    arrange(best) |>
+    slice(1) |>
+    select(id, name.x)
+
+print(females)
 
 ```
 
-**Write your answer here.**
+**The top ranked female speedcuber in Europe is Magdalena Pabisz.**
 
 
 
@@ -124,11 +177,45 @@ Having a time below 5 seconds is considered an elite achievement and most speedc
 
 
 ```{r}
-## Add your code here
+# get top 10 speed cubers
+top_cubers <- rankssingle |> 
+  arrange(worldRank) |> 
+  head(10) |> 
+  select(personId)
+
+# pivot table to make it more readable
+long_results <- results |> 
+  pivot_longer(cols = starts_with("value"), names_to = "solve_number", values_to = "time")
+
+# get all results of only top 10 cubers
+top_cuber_results <- long_results |> 
+  inner_join(top_cubers, by = "personId")
+
+# join with competitions to get competition date information
+top_cuber_results <- top_cuber_results |>
+  inner_join(competitions, by = c("competitionId" = "id")) |> 
+  select(personId, competitionId, solve_number, time, year, month, day)
+
+#  group results by cuber, and then sort by date
+top_cuber_results <- top_cuber_results |> 
+  arrange(personId, year, month, day)
+
+# count number of solves it takes for each cuber to get under 5 seconds
+sub5_solves <- top_cuber_results |> 
+  group_by(personId) |> 
+  mutate(solve_index = row_number()) |> 
+  filter(time < 500) |> 
+  summarise(first_sub5_solve = min(solve_index, na.rm = TRUE))
+
+# get avg number of solves
+avg_solves <- mean(sub5_solves$first_sub5_solve, na.rm = TRUE)
+
+# Print result
+print(avg_solves)
 
 ```
 
-**Write your answer here.**
+**It took the top 10 speedcubers 132 solves on average to get a sub-5 second solve.**
 
 
 
@@ -136,7 +223,15 @@ Having a time below 5 seconds is considered an elite achievement and most speedc
 
 
 ```{r}
-## Add your code here
+# getting one cuber's results
+target_cuber <- top_cuber_results %>% 
+  filter(personId== '2012PARK03') %>% 
+  mutate(Date = as.Date(paste(year, month, day, sep="-")))
+
+# plot solve times vs. date
+ggplot(target_cuber, aes(x = Date, y = time)) + 
+  geom_point() + 
+  labs(title = "Solve Times Over Time", x = "Date", y = "Solve Time (seconds)")
 
 ```
 
@@ -151,12 +246,30 @@ Which speed cubers **not** in the top 10,000 (worldwide for single best time) sh
 The idea here is to identify "up-and-coming" speedcubers who are not yet achieving elite times. Come up with a list of **five** speedcubers (provide their names and WCA IDs) that you have identified as "up-and-coming". There is no one way to answer this question and the goal is to provide an analysis of the data that justifies the selection of your five names.
 
 ```{r}
-## Add your code here
+# joined the results, rankssingle, and person tables
+new_speedcubers <- rankssingle |>
+    filter(worldRank > 10000) |>
+    inner_join(results, by = c("personId" = "personId")) |>
+    inner_join(competitions, by = c("competitionId" = "id")) |>
+    group_by(personId) |>
+    arrange(personId, year, month, day) |> 
+    # calculated the improvement as rate of change from first to last scores
+    summarise(
+        first_score = first(average),
+        last_score = last(average),
+        competition_count = n_distinct(competitionId),
+        improvement = (first_score - last_score) / competition_count,
+        name = first(personName)
+    ) |>
+    # final filtering
+    filter(competition_count > 20) |>
+    arrange(desc(improvement)) |>
+    slice(1:5)
 
-
+print(new_speedcubers)
 ```
 
-**Write your answer here.**
+**The top up-and-coming speedcubers are 1. 2009NEEL01 - Patitpavan Neel, 2. 2009HEND01 - Paul Hendrickson, 3. 2012IONE01 - Andrei Răzvan Ionel, 4. 2011PALS01 - Shrijan Pal, 5. 2017NOVA05 - João Luiz Melo Novaes. The way I found these speedcubers was to find all competitions for speedcubers under the top 10,000, then chronologically, and finally found their 'rate of improvement' which is calculated as the rate of improvement from their first and last scores. This is then arranged and the top 5 cubers are selected.**
 
 
 
@@ -170,18 +283,26 @@ To answer this question, characterize each person using their best *average* sco
 
 Before attempting to answer the question, state what you expect the answer to be below.
 
-**Write your expectation here.**
-
+**We expect North America to have the faster group of speedcubers than Europe  on average.**
 
 
 ```{r}
-## Add your code here
+## use the ranksaverage table to get the best average score for each person by joining relevant information with persons
+## and countries tables, and then get average times per continent
 
+avg_speedcubers <- ranksaverage |>
+  inner_join(persons, by = c("personId" = "id")) |>
+  inner_join(countries, by = c("countryId" = "id")) |>
+  filter(continentId %in% c("_Europe", "_North America")) |>
+  group_by(continentId) |>
+  summarise(avg_time = mean(best))
+
+print(avg_speedcubers)
 ```
 
 What do you conclude about speedcubers in Europe vs. North America?
 
-**Write you answer here.**
+**The average time of speedcubers 3538 in Europe and 3503 in North America. We conclude that North America has the faster group of speedcubers on average.**
 
 
 ### Alternative Explanations
@@ -194,18 +315,45 @@ Develop an alternative explanation/hypothesis regarding speedcubers from Europe 
 
 If the results from the previous question were unexpected, make use of systems thinking to develop an alternative hypothesis. If the results were consistent with your expectations, then use skeptical thinking. In either case, you should present an analysis that shows evidence for or against this alternative explanation relative to the conclusion that you made in the previous question.
 
-**State your alternative explanation here.**
+**Alternative Hypothesis: The average time of North American speedcubers is faster than that of European speedcubers because speedcubing is more popular in North America.**
+**If speedcubing is more popular in North America, more people are expected to learn cubing and speedcubing, thus leading to more accessibility and resources as well, which**
+**would lead to faster times. This is consistent with the results in the previous question**
+
+**To test this alternative hypothesis, we will count the total number of speedcubers from North America vs. those from Europe.**
 
 ```{r}
-## Add your code here
+## count number of competitions for Europe vs. for North America
+total_num_speedcubers <- persons |>
+    inner_join(countries, by = c("countryId" = "id")) |>
+    filter(continentId %in% c("_Europe", "_North America")) |>
+    group_by(continentId) |>
+    summarise(total_speedcubers = n())
 
+print(total_num_speedcubers)
 ```
 
-**Summarize the results of your alternative analysis here.**
-
+**According to the alternative analysis, there are 58314 North American speedcubers and 53274 European speedcubers. This is consistent with the alternative hypothesis that there are more speedcubers in North American than Europe, and thus**
+**could be the reason for the result in the previous question.**
 
 
 
 
 ## Discussion
 
+Putting it all together, what did you learn from your data?
+• Reflect on the process of conducting this project. What was challenging, what have you
+learned from the process itself?
+
+**All of the conclusions that we reached were expected, there was nothing out of the ordinary. We learned more about speedcubing records and**
+**how they differ across different demographics.**
+
+**A challenging part of this project was figuring out how to navigate all of the tables to extract relevant data.** 
+**Another challenge was making sure that we didn't assume anything about the data when writing code, especially** 
+**because there were so many special cases that we had to consider.**
+
+**Completing this project has given us a better understanding of tidyverse functions and gave practice working with**
+**complex datasets for real world applications.**
+
+**We worked on the first three questions together, and then split up the next three questions. Maehek did the**
+**question about Sub-5 Second Solve, Ananth did the question about Up-and-Coming Speed Cubers, and Siddhi did the**
+**question about Region Rivalries. We all worked on the discussion together.**
